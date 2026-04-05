@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -e
 
 PACKAGE_NAME="aic8800dc"
 PACKAGE_VERSION="6.4.3.0-patched.1"
