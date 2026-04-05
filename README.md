@@ -14,13 +14,7 @@ DKMS is supported. The driver rebuilds automatically after every kernel update.
 **Ubuntu / Debian:**
 
 ```bash
-sudo apt install dkms build-essential linux-headers-$(uname -r)
-```
-
-If that fails because the package is not found (HWE or non-generic kernel), use the metapackage instead (Ubuntu/Debian only):
-
-```bash
-sudo apt install dkms build-essential linux-headers-generic
+sudo apt install dkms build-essential linux-headers-$(uname -r) linux-headers-generic
 ```
 
 **Arch Linux:**
@@ -48,6 +42,7 @@ sudo ./install.sh
 ### 3. Verify
 
 ```bash
+sudo chmod +x test.sh
 sudo ./test.sh
 ```
 
@@ -83,10 +78,8 @@ It verifies:
 **Simulate a kernel upgrade rebuild** (no reboot needed):
 
 ```bash
-# Install headers for another kernel version
-sudo apt install linux-headers-<other-version>
-
-# Build for that kernel
+# Install headers for another kernel version using your distro's package manager,
+# then build for that kernel:
 sudo dkms build -m aic8800dc -v 6.4.3.0-patched.1 -k <other-version>
 
 # Confirm both kernels show as installed
@@ -113,6 +106,6 @@ sudo modprobe aic8800_fdrv
 
 ## Notes
 
-- After `apt upgrade` installs a new kernel, DKMS rebuilds the driver automatically. No manual action needed.
+- After a kernel update, DKMS rebuilds the driver automatically. No manual action needed.
 - If the build fails on a new kernel, the driver may need patching for API changes introduced in that kernel. This is a limitation of all out-of-tree drivers.
 - **Secure Boot users:** the kernel module must be signed to load under Secure Boot. See your distro's MOK (Machine Owner Key) documentation for signing instructions.

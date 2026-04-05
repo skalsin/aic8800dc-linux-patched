@@ -37,11 +37,11 @@ echo ""
 # --- 2. Module files on disk ---
 echo "-- Installed .ko files --"
 for mod in aic_load_fw aic8800_fdrv; do
-    KO_PATH="/lib/modules/${KVER}/updates/${mod}.ko"
-    if [ -f "${KO_PATH}" ]; then
+    KO_PATH="$(find /lib/modules/${KVER} -name "${mod}.ko" 2>/dev/null | head -1)"
+    if [ -n "${KO_PATH}" ]; then
         ok "${KO_PATH}"
     else
-        fail "${KO_PATH} not found"
+        fail "${mod}.ko not found under /lib/modules/${KVER}"
     fi
 done
 echo ""
