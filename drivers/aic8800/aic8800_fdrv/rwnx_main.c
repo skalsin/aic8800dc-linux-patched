@@ -228,7 +228,7 @@ static struct ieee80211_channel rwnx_2ghz_channels[] = {
     CHAN(2510),
 };
 
-//#ifdef USE_5G
+#ifdef USE_5G
 static struct ieee80211_channel rwnx_5ghz_channels[] = {
     CHAN(5180),             // 36 -   20MHz
     CHAN(5200),             // 40 -   20MHz
@@ -317,7 +317,7 @@ static struct ieee80211_channel rwnx_5ghz_channels[] = {
     CHAN(5960),
     CHAN(5970),
 };
-//#endif
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)) || defined(CONFIG_HE_FOR_OLD_KERNEL)
 struct ieee80211_sband_iftype_data rwnx_he_capa = {
@@ -341,7 +341,7 @@ static struct ieee80211_supported_band rwnx_band_2GHz = {
 #endif
 };
 
-//#ifdef USE_5G
+#ifdef USE_5G
 static struct ieee80211_supported_band rwnx_band_5GHz = {
     .channels   = rwnx_5ghz_channels,
     .n_channels = ARRAY_SIZE(rwnx_5ghz_channels) - 59, // -59 to exclude extra channels
@@ -356,7 +356,7 @@ static struct ieee80211_supported_band rwnx_band_5GHz = {
     .n_iftype_data = 1,
 #endif
 };
-//#endif
+#endif
 
 static struct ieee80211_iface_limit rwnx_limits[] = {
     { .max = 1,
@@ -5101,7 +5101,7 @@ static int rwnx_cfg80211_dump_survey(struct wiphy *wiphy, struct net_device *net
         sband = NULL;
     }
 
-	//#ifdef USE_5G
+	#ifdef USE_5G
 	if (rwnx_hw->band_5g_support) {
 	    if (!sband) {
 	        // Check if provided index matches with a supported 5GHz channel
@@ -5110,12 +5110,11 @@ static int rwnx_cfg80211_dump_survey(struct wiphy *wiphy, struct net_device *net
 	        if (!sband || idx >= sband->n_channels)
 	            return -ENOENT;
 	    }
-	}else{
-	//#else
-		if (!sband || idx >= sband->n_channels)
-            return -ENOENT;
 	}
-	//#endif
+	#else
+	if (!sband || idx >= sband->n_channels)
+		return -ENOENT;
+	#endif
 
     // Fill the survey
     info->channel = &sband->channels[idx];
@@ -8874,10 +8873,12 @@ if((g_rwnx_plat->usbdev->chipid == PRODUCT_ID_AIC8801) ||
 
 #ifdef USE_5G
 	ret = rwnx_send_set_stack_start_req(rwnx_hw, 1, 0, CO_BIT(5), rwnx_hw->fwlog_en, &set_start_cfm);
+	/*
 	if(rwnx_hw->usbdev->chipid == PRODUCT_ID_AIC8800DC ||
 			rwnx_hw->usbdev->chipid == PRODUCT_ID_AIC8800DW){
 		set_start_cfm.is_5g_support = false;
 	}
+	*/
 #else
 	ret = rwnx_send_set_stack_start_req(rwnx_hw, 1, get_hardware_info(), feature.hwinfo, rwnx_hw->fwlog_en, &set_start_cfm);
 #endif
@@ -8894,11 +8895,11 @@ if((g_rwnx_plat->usbdev->chipid == PRODUCT_ID_AIC8801) ||
 	AICWFDBG(LOGINFO, "Firmware Version: %s\r\n", fw_version.fw_version);
 
     wiphy->bands[NL80211_BAND_2GHZ] = &rwnx_band_2GHz;
-//#ifdef USE_5G
+#ifdef USE_5G
 	if(rwnx_hw->band_5g_support){
     	wiphy->bands[NL80211_BAND_5GHZ] = &rwnx_band_5GHz;
 	}
-//#endif
+#endif
     wiphy->interface_modes =
     BIT(NL80211_IFTYPE_STATION)     |
     BIT(NL80211_IFTYPE_AP)          |

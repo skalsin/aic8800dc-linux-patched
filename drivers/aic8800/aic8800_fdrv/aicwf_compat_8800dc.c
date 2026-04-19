@@ -57,16 +57,13 @@ u32 syscfg_tbl_masked_8800dc[][3] = {
                  ((0x1 << 0) | (0x1 << 20) | (0x0 << 22))},
     {0x70001028, (0xf << 2), (0x1 << 2)},
     #endif
-    #endif /* CONFIG_PMIC_SETTING */
     {0x00000000, 0x00000000, 0x00000000}, // last one
 };
 
 u32 syscfg_tbl_masked_8800dc_u01[][3] = {
-    //#ifdef CONFIG_PMIC_SETTING
     {0x70001000, (0x1 << 16), (0x1 << 16)}, // for low temperature
     {0x70001028, (0x1 << 6), (0x1 << 6)},
     {0x70001000, (0x1 << 16), (0x0 << 16)},
-    #endif /* CONFIG_PMIC_SETTING */
 };
 
 
