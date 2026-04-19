@@ -912,9 +912,9 @@ static void rwnx_set_vht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 	return;
 #endif
 
-    //#ifdef USE_5G
+    #ifdef USE_5G
     struct ieee80211_supported_band *band_5GHz = wiphy->bands[NL80211_BAND_5GHZ];
-    //#endif
+    #endif
     struct ieee80211_supported_band *band_2GHz = wiphy->bands[NL80211_BAND_2GHZ];
 
     int i;
@@ -1019,7 +1019,7 @@ static void rwnx_set_vht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 		}
 
 
-//#ifdef USE_5G
+#ifdef USE_5G
 	if (rwnx_hw->band_5g_support) {
 	    band_5GHz->vht_cap.vht_supported = true;
 	    if (rwnx_hw->mod_params->sgi80)
@@ -1117,9 +1117,9 @@ static void rwnx_set_vht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 
 static void rwnx_set_ht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 {
-	//#ifdef USE_5G
+	#ifdef USE_5G
     struct ieee80211_supported_band *band_5GHz = wiphy->bands[NL80211_BAND_5GHZ];
-	//#endif
+	#endif
 
     struct ieee80211_supported_band *band_2GHz = wiphy->bands[NL80211_BAND_2GHZ];
     int i;
@@ -1127,11 +1127,11 @@ static void rwnx_set_ht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 
     if (!rwnx_hw->mod_params->ht_on) {
         band_2GHz->ht_cap.ht_supported = false;
-		//#ifdef USE_5G
+		#ifdef USE_5G
 		if (rwnx_hw->band_5g_support){
         	band_5GHz->ht_cap.ht_supported = false;
 		}
-		//#endif
+		#endif
         return;
     }
 
@@ -1168,11 +1168,11 @@ static void rwnx_set_ht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
         band_2GHz->ht_cap.mcs.rx_mask[i] = 0xFF;
     }
 
-	//#ifdef USE_5G
+	#ifdef USE_5G
 	if (rwnx_hw->band_5g_support){
     	band_5GHz->ht_cap = band_2GHz->ht_cap;
 	}
-	//#endif
+	#endif
 }
 
 #ifdef CONFIG_HE_FOR_OLD_KERNEL
@@ -1303,12 +1303,12 @@ static void rwnx_set_he_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
     if (!rwnx_hw->mod_params->he_on) {
         band_2GHz->iftype_data = NULL;
         band_2GHz->n_iftype_data = 0;
-        //#ifdef USE_5G
+        #ifdef USE_5G
         if (rwnx_hw->band_5g_support) {
 	        band_5GHz->iftype_data = NULL;
 	        band_5GHz->n_iftype_data = 0;
         }
-        //#endif
+        #endif
         return;
     }
     he_cap = (struct ieee80211_sta_he_cap *) &band_2GHz->iftype_data->he_cap;
@@ -1520,7 +1520,7 @@ static void rwnx_set_he_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 	        he_cap->he_mcs_nss_supp.tx_mcs_80p80 |= unsup_for_ss;
 	    }
 	}
-//#endif
+#endif
 #endif
 }
 

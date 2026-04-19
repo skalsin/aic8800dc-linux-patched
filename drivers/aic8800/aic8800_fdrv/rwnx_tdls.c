@@ -188,9 +188,9 @@ rwnx_tdls_add_supp_channels(struct rwnx_hw *rwnx_hw, struct sk_buff *skb)
     u8 *pos_subband;
     u8 *pos = skb_put(skb, 2);
     struct ieee80211_supported_band *rwnx_band_2GHz = rwnx_hw->wiphy->bands[NL80211_BAND_2GHZ];
-	//#ifdef USE_5G
+	#ifdef USE_5G
     struct ieee80211_supported_band *rwnx_band_5GHz = rwnx_hw->wiphy->bands[NL80211_BAND_5GHZ];
-	//#endif
+	#endif
 
     *pos++ = WLAN_EID_SUPPORTED_CHANNELS;
 
@@ -210,7 +210,7 @@ rwnx_tdls_add_supp_channels(struct rwnx_hw *rwnx_hw, struct sk_buff *skb)
 
     /* 5GHz, with 20MHz spacing */
     pos_subband = skb_put(skb, 2);
-	//#ifdef USE_5G
+	#ifdef USE_5G
 	if(rwnx_hw->band_5g_support){
 	    if (rwnx_band_5GHz->n_channels > 0)
 	    {
@@ -219,7 +219,7 @@ rwnx_tdls_add_supp_channels(struct rwnx_hw *rwnx_hw, struct sk_buff *skb)
 	        subband_cnt++;
 	    }
 	}
-	//#endif
+	#endif
     /* length */
     *pos = 2 * subband_cnt;
 }
@@ -701,9 +701,9 @@ rwnx_tdls_send_mgmt_packet_data(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_v
     struct sk_buff *skb;
     int ret = 0;
     struct ieee80211_supported_band *rwnx_band_2GHz = rwnx_hw->wiphy->bands[NL80211_BAND_2GHZ];
-    //#ifdef USE_5G
+    #ifdef USE_5G
     struct ieee80211_supported_band *rwnx_band_5GHz = rwnx_hw->wiphy->bands[NL80211_BAND_5GHZ];
-    //#endif
+    #endif
     int channels = rwnx_band_2GHz->n_channels;
 
 	if (rwnx_hw->band_5g_support){
@@ -715,11 +715,11 @@ rwnx_tdls_send_mgmt_packet_data(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_v
               10 +  /* supported rates */
               6 +  /* extended supported rates */
               (2 + channels) + /* supported channels */
-              //#ifdef USE_5G
+              #ifdef USE_5G
               //(2 + rwnx_band_2GHz->n_channels + rwnx_band_5GHz->n_channels) + /* supported channels */
-              //#else
+              #else
 			  //(2 + rwnx_band_2GHz->n_channels) + /* supported channels */
-			  //#endif
+			  #endif
               sizeof(struct ieee_types_extcap) +
               sizeof(struct ieee80211_wmm_param_ie) +
               4 + /* oper classes */

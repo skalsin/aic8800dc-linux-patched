@@ -497,11 +497,11 @@ static ssize_t rwnx_dbgfs_acsinfo_read(struct file *file,
                      "FREQ    TIME(ms)    BUSY(ms)    NOISE(dBm)\n");
 
 
-	//#ifdef USE_5G
+	#ifdef USE_5G
     //for (band = NL80211_BAND_2GHZ; band <= NL80211_BAND_5GHZ; band++) {
-	//#else
+	#else
 	//for (band = NL80211_BAND_2GHZ; band < NL80211_BAND_5GHZ; band++) {
-	//#endif
+	#endif
 	for (band = NL80211_BAND_2GHZ; band < band_max; band++) {
         for (chan_cnt = 0; chan_cnt < wiphy->bands[band]->n_channels; chan_cnt++) {
             struct rwnx_survey_info *p_survey_info = &priv->survey[survey_cnt];
