@@ -1709,13 +1709,13 @@ int rwnx_send_me_config_req(struct rwnx_hw *rwnx_hw)
     struct me_config_req *req;
     struct wiphy *wiphy = rwnx_hw->wiphy;
 
-    //#ifdef USE_5G
+    #ifdef USE_5G
     //struct ieee80211_sta_ht_cap *ht_cap = &wiphy->bands[NL80211_BAND_5GHZ]->ht_cap;
     //struct ieee80211_sta_vht_cap *vht_cap = &wiphy->bands[NL80211_BAND_5GHZ]->vht_cap;
-    //#else
+    #else
     //struct ieee80211_sta_ht_cap *ht_cap = &wiphy->bands[NL80211_BAND_2GHZ]->ht_cap;
     //struct ieee80211_sta_vht_cap *vht_cap = &wiphy->bands[NL80211_BAND_2GHZ]->vht_cap;
-	//#endif
+	#endif
 	struct ieee80211_sta_ht_cap *ht_cap;
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) || defined(CONFIG_VHT_FOR_OLD_KERNEL)
 	struct ieee80211_sta_vht_cap *vht_cap;

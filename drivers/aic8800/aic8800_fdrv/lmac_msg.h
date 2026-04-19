@@ -2179,7 +2179,7 @@ struct sm_connect_ind
 
     /// EDCA parameters
     u32_l ac_param[AC_MAX];
-};
+} __attribute__((packed));
 
 /// Structure containing the parameters of the @ref SM_DISCONNECT_REQ message.
 struct sm_disconnect_req
