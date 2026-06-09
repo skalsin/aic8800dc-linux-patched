@@ -308,7 +308,7 @@ void platform_wifi_power_off(void)
     printk("platform_wifi_power_off");
 }
 #endif
-void aicwf_sdio_register(void)
+int aicwf_sdio_register(void)
 {
 #ifdef CONFIG_PLATFORM_NANOPI
     extern_wifi_set_enable(0);
@@ -333,11 +333,7 @@ void aicwf_sdio_register(void)
 #ifdef CONFIG_PLATFORM_ALLWINNER
     platform_wifi_power_on();
 #endif
-    if (sdio_register_driver(&aicwf_sdio_driver)) {
-
-    } else {
-    	//may add mmc_rescan here
-    }
+    return sdio_register_driver(&aicwf_sdio_driver);
 }
 
 void aicwf_sdio_exit(void)
@@ -801,6 +797,22 @@ int aicwf_sdio_send(struct aicwf_tx_priv *tx_priv)
             sdio_err("txq no pkt\n");
             spin_unlock_bh(&sdiodev->tx_priv->txqlock);
             goto done;
+        }
+        if (pkt) {
+            struct rwnx_txhdr *txhdr_temp = (struct rwnx_txhdr *)pkt->data;
+            u32 needed_len = 4 + sizeof(struct txdesc_api) + (pkt->len - txhdr_temp->sw_hdr->headroom) + 4;
+            u32 curr_len = tx_priv->tail - tx_priv->head;
+            if (curr_len + needed_len > MAX_AGGR_TXPKT_LEN) {
+                struct frame_queue *pq = &sdiodev->tx_priv->txq;
+                int prio = pq->hi_prio;
+                struct sk_buff_head *q = &pq->queuelist[prio];
+                __skb_queue_head(q, pkt);
+                pq->qcnt++;
+                spin_unlock_bh(&sdiodev->tx_priv->txqlock);
+                tx_priv->fw_avail_bufcnt -= atomic_read(&tx_priv->aggr_count);
+                aicwf_sdio_aggr_send(tx_priv);
+                goto done;
+            }
         }
         atomic_dec(&sdiodev->tx_priv->tx_pktcnt);
         spin_unlock_bh(&sdiodev->tx_priv->txqlock);

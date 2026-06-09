@@ -713,44 +713,49 @@ static inline char *aicwf_get_iwe_stream_rate(struct rwnx_hw* rwnx_hw,
 
 int aic_get_sec_ie(u8 *in_ie, uint in_len, u8 *rsn_ie, u16 *rsn_len, u8 *wpa_ie, u16 *wpa_len)
 {
-
 	u8 authmode;
-	u8 sec_idx;
 	u8 wpa_oui[4] = {0x00, 0x50, 0xf2, 0x01};
 	uint cnt = 0;
 
-	/* Search required WPA or WPA2 IE and copy to sec_ie[ ] */
+	*wpa_len = 0;
+	*rsn_len = 0;
 
-	cnt = 0;
-
-	sec_idx = 0;
-
-	while (cnt < in_len) {
+	while (cnt + 2 <= in_len) {
 		authmode = in_ie[cnt];
+		u8 ie_len = in_ie[cnt + 1];
 
-		if ((authmode == 0xdd/*_WPA_IE_ID_*/) && (memcmp(&in_ie[cnt + 2], &wpa_oui[0], 4) == 0)) {
-			if (wpa_ie)
-				memcpy(wpa_ie, &in_ie[cnt], in_ie[cnt + 1] + 2);
-
-			*wpa_len = in_ie[cnt + 1] + 2;
-			cnt += in_ie[cnt + 1] + 2; /* get next */
-		} else {
-			if (authmode == 0x30/*_WPA2_IE_ID_*/) {
-				if (rsn_ie)
-					memcpy(rsn_ie, &in_ie[cnt], in_ie[cnt + 1] + 2);
-
-				*rsn_len = in_ie[cnt + 1] + 2;
-				cnt += in_ie[cnt + 1] + 2; /* get next */
-			} else {
-				cnt += in_ie[cnt + 1] + 2; /* get next */
-			}
+		if (cnt + 2 + ie_len > in_len) {
+			break;
 		}
 
+		if (authmode == 0xdd/*_WPA_IE_ID_*/) {
+			if (ie_len >= 4 && memcmp(&in_ie[cnt + 2], &wpa_oui[0], 4) == 0) {
+				u16 copy_len = ie_len + 2;
+				if (copy_len > 255) {
+					copy_len = 255;
+				}
+				if (wpa_ie) {
+					memcpy(wpa_ie, &in_ie[cnt], copy_len);
+				}
+				*wpa_len = copy_len;
+			}
+			cnt += ie_len + 2;
+		} else if (authmode == 0x30/*_WPA2_IE_ID_*/) {
+			u16 copy_len = ie_len + 2;
+			if (copy_len > 255) {
+				copy_len = 255;
+			}
+			if (rsn_ie) {
+				memcpy(rsn_ie, &in_ie[cnt], copy_len);
+			}
+			*rsn_len = copy_len;
+			cnt += ie_len + 2;
+		} else {
+			cnt += ie_len + 2;
+		}
 	}
 
-
 	return *rsn_len + *wpa_len;
-
 }
 
 
@@ -941,7 +946,7 @@ static int aicwf_set_scan(struct net_device *dev, struct iw_request_info *a,
 	
 	rwnx_hw->wext_scan = 1;
 
-	request = (struct cfg80211_scan_request *)vmalloc(sizeof(struct cfg80211_scan_request));
+	request = (struct cfg80211_scan_request *)vmalloc(sizeof(struct cfg80211_scan_request) + rwnx_hw->support_freqs_number * sizeof(struct ieee80211_channel *));
 
 	request->n_channels = rwnx_hw->support_freqs_number;
 	request->n_ssids = 0;

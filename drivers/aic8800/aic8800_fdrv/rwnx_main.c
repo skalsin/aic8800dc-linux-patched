@@ -3691,8 +3691,8 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
     int error = 0;
     int is_wep = ((sme->crypto.cipher_group == WLAN_CIPHER_SUITE_WEP40) ||
 	                (sme->crypto.cipher_group == WLAN_CIPHER_SUITE_WEP104) ||
-	                (sme->crypto.ciphers_pairwise[0] == WLAN_CIPHER_SUITE_WEP40) ||
-		            (sme->crypto.ciphers_pairwise[0] == WLAN_CIPHER_SUITE_WEP104));
+	                (sme->crypto.n_ciphers_pairwise && (sme->crypto.ciphers_pairwise[0] == WLAN_CIPHER_SUITE_WEP40)) ||
+		            (sme->crypto.n_ciphers_pairwise && (sme->crypto.ciphers_pairwise[0] == WLAN_CIPHER_SUITE_WEP104)));
 
     RWNX_DBG(RWNX_FN_ENTRY_STR);
 
@@ -4708,6 +4708,7 @@ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
     if (cfm.chan_index != RWNX_CH_NOT_SET)
     {
         struct cfg80211_chan_def mon_chandef;
+        memset(&mon_chandef, 0, sizeof(mon_chandef));
 
         if (rwnx_hw->vif_started > 1) {
             // In this case we just want to update the channel context index not
@@ -4717,10 +4718,15 @@ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
         }
 
         mon_chandef.chan = ieee80211_get_channel(wiphy, cfm.chan.prim20_freq);
-        mon_chandef.center_freq1 = cfm.chan.center1_freq;
-        mon_chandef.center_freq2 = cfm.chan.center2_freq;
-        mon_chandef.width =  chnl2bw[cfm.chan.type];
-        rwnx_chanctx_link(rwnx_vif, cfm.chan_index, &mon_chandef);
+        if (mon_chandef.chan) {
+            mon_chandef.center_freq1 = cfm.chan.center1_freq;
+            mon_chandef.center_freq2 = cfm.chan.center2_freq;
+            mon_chandef.width =  chnl2bw[cfm.chan.type];
+            rwnx_chanctx_link(rwnx_vif, cfm.chan_index, &mon_chandef);
+        } else {
+            AICWFDBG(LOGERROR, "%s: Channel not found for freq %d, linking with NULL chandef\n", __func__, cfm.chan.prim20_freq);
+            rwnx_chanctx_link(rwnx_vif, cfm.chan_index, NULL);
+        }
     }
 
     return 0;
@@ -9159,17 +9165,25 @@ void rwnx_cfg80211_deinit(struct rwnx_hw *rwnx_hw)
 	}
 }
 
-static void aicsmac_driver_register(void)
+static int aicsmac_driver_register(void)
 {
+    int ret = 0;
 #ifdef AICWF_SDIO_SUPPORT
-    aicwf_sdio_register();
+    ret = aicwf_sdio_register();
+    if (ret < 0)
+        return ret;
 #endif
 #ifdef AICWF_USB_SUPPORT
-    aicwf_usb_register();
+    ret = aicwf_usb_register();
+    if (ret < 0)
+        return ret;
 #endif
 #ifdef AICWF_PCIE_SUPPORT
-    aicwf_pcie_register();
+    ret = aicwf_pcie_register();
+    if (ret < 0)
+        return ret;
 #endif
+    return ret;
 }
 
 //static DECLARE_WORK(aicsmac_driver_work, aicsmac_driver_register);
@@ -9186,6 +9200,7 @@ void aicwf_hostif_ready(void)
 
 static int __init rwnx_mod_init(void)
 {
+    int ret;
 
     RWNX_DBG(RWNX_FN_ENTRY_STR);
     rwnx_print_version();
@@ -9197,15 +9212,20 @@ static int __init rwnx_mod_init(void)
 
 	init_completion(&hostif_register_done);
 
-	aicsmac_driver_register();
+	ret = aicsmac_driver_register();
+	if (ret < 0) {
+		AICWFDBG(LOGERROR, "aicsmac_driver_register failed: %d\n", ret);
+		rwnx_free_cmd_array();
+		return ret;
+	}
 
 #ifdef AICWF_SDIO_SUPPORT
 	if ((wait_for_completion_timeout(&hostif_register_done, msecs_to_jiffies(REGISTRATION_TIMEOUT)) == 0)) {
 		AICWFDBG(LOGERROR, "register_driver timeout or error\n");
         aicwf_sdio_exit();
-	return -ENODEV;
-}
-
+		rwnx_free_cmd_array();
+		return -ENODEV;
+	}
 #endif /* AICWF_SDIO_SUPPORT */
 #ifdef AICWF_USB_SUPPORT
        //aicwf_usb_exit();

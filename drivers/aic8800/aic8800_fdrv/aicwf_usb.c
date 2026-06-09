@@ -861,6 +861,20 @@ int aicwf_usb_send(struct aicwf_tx_priv *tx_priv)
             ret = -1;
             return ret;
         }
+        if (pkt) {
+            struct rwnx_txhdr *txhdr_temp = (struct rwnx_txhdr *)pkt->data;
+            u32 needed_len = 8 + sizeof(struct txdesc_api) + (pkt->len - txhdr_temp->sw_hdr->headroom) + 4;
+            curr_len = tx_priv->tail - tx_priv->head;
+            if (curr_len + needed_len > MAX_USB_AGGR_TXPKT_LEN) {
+                struct frame_queue *pq = &usbdev->tx_priv->txq;
+                int prio = pq->hi_prio;
+                struct sk_buff_head *q = &pq->queuelist[prio];
+                __skb_queue_head(q, pkt);
+                pq->qcnt++;
+                spin_unlock_bh(&usbdev->tx_priv->txqlock);
+                break;
+            }
+        }
         atomic_dec(&usbdev->tx_priv->tx_pktcnt);
         spin_unlock_bh(&usbdev->tx_priv->txqlock);
         if(tx_priv==NULL || tx_priv->tail==NULL || pkt==NULL) {
@@ -2235,11 +2249,13 @@ static struct usb_driver aicwf_usbdrvr = {
 #endif
 };
 
-void aicwf_usb_register(void)
+int aicwf_usb_register(void)
 {
-    if (usb_register(&aicwf_usbdrvr) < 0) {
+    int ret = usb_register(&aicwf_usbdrvr);
+    if (ret < 0) {
         usb_err("usb_register failed\n");
     }
+    return ret;
 }
 
 void aicwf_usb_exit(void)

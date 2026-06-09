@@ -151,7 +151,7 @@ struct aic_usb_dev {
 };
 
 extern void aicwf_usb_exit(void);
-extern void aicwf_usb_register(void);
+extern int aicwf_usb_register(void);
 extern void aicwf_usb_tx_flowctrl(struct aic_usb_dev *usb_dev, bool state);
 int usb_bustx_thread(void *data);
 int usb_busrx_thread(void *data);

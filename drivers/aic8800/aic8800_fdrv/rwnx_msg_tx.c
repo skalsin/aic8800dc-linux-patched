@@ -876,10 +876,14 @@ int rwnx_send_roc(struct rwnx_hw *rwnx_hw, struct rwnx_vif *vif,
     struct mm_remain_on_channel_req *req;
     struct cfg80211_chan_def chandef;
 
+    memset(&chandef, 0, sizeof(chandef));
+
     RWNX_DBG(RWNX_FN_ENTRY_STR);
 
     /* Create channel definition structure */
-    cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_NO_HT);
+    if (chan) {
+        cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_NO_HT);
+    }
 
     /* Build the MM_REMAIN_ON_CHANNEL_REQ message */
     req = rwnx_msg_zalloc(MM_REMAIN_ON_CHANNEL_REQ, TASK_MM, DRV_TASK_ID,
@@ -2331,13 +2335,21 @@ int rwnx_send_sm_connect_req(struct rwnx_hw *rwnx_hw,
     }
 #ifdef CONFIG_USE_WIRELESS_EXT
 	memset(rwnx_hw->wext_essid, 0, 32);
-	memcpy(rwnx_hw->wext_essid, sme->ssid, (int)sme->ssid_len);
+	if (sme->ssid && sme->ssid_len > 0) {
+		memcpy(rwnx_hw->wext_essid, sme->ssid, (int)sme->ssid_len);
+	}
 #endif
 
 	rwnx_vif->sta.ssid_len = (int)sme->ssid_len;
 	memset(rwnx_vif->sta.ssid, 0, rwnx_vif->sta.ssid_len + 1);
-	memcpy(rwnx_vif->sta.ssid, sme->ssid, rwnx_vif->sta.ssid_len);
-	memcpy(rwnx_vif->sta.bssid, sme->bssid, ETH_ALEN);
+	if (sme->ssid && rwnx_vif->sta.ssid_len > 0) {
+		memcpy(rwnx_vif->sta.ssid, sme->ssid, rwnx_vif->sta.ssid_len);
+	}
+	if (sme->bssid) {
+		memcpy(rwnx_vif->sta.bssid, sme->bssid, ETH_ALEN);
+	} else {
+		memset(rwnx_vif->sta.bssid, 0, ETH_ALEN);
+	}
 
 	AICWFDBG(LOGINFO, "%s drv_vif_index:%d connect to %s(%d) channel:%d auth_type:%d\r\n",
 		__func__,
@@ -2347,12 +2359,14 @@ int rwnx_send_sm_connect_req(struct rwnx_hw *rwnx_hw,
 		req->chan.freq,
 		req->auth_type);
 
-    printk("connect mac %x %x %x %x %x %x\n", rwnx_vif->sta.bssid[0],
-        rwnx_vif->sta.bssid[1],
-        rwnx_vif->sta.bssid[2],
-        rwnx_vif->sta.bssid[3],
-        rwnx_vif->sta.bssid[4],
-        rwnx_vif->sta.bssid[5]);
+    if (sme->bssid) {
+        printk("connect mac %x %x %x %x %x %x\n", rwnx_vif->sta.bssid[0],
+            rwnx_vif->sta.bssid[1],
+            rwnx_vif->sta.bssid[2],
+            rwnx_vif->sta.bssid[3],
+            rwnx_vif->sta.bssid[4],
+            rwnx_vif->sta.bssid[5]);
+    }
     /* Send the SM_CONNECT_REQ message to LMAC FW */
     return rwnx_send_msg(rwnx_hw, req, 1, SM_CONNECT_CFM, cfm);
 
@@ -2766,12 +2780,16 @@ int rwnx_send_apm_start_cac_req(struct rwnx_hw *rwnx_hw, struct rwnx_vif *vif,
 
     /* Set parameters for the APM_START_CAC_REQ message */
     req->vif_idx = vif->vif_index;
-    req->chan.band = chandef->chan->band;
-    req->chan.freq = chandef->chan->center_freq;
-    req->chan.flags = 0;
-    req->center_freq1 = chandef->center_freq1;
-    req->center_freq2 = chandef->center_freq2;
-    req->ch_width = bw2chnl[chandef->width];
+    if (chandef && chandef->chan) {
+        req->chan.band = chandef->chan->band;
+        req->chan.freq = chandef->chan->center_freq;
+        req->chan.flags = 0;
+        req->center_freq1 = chandef->center_freq1;
+        req->center_freq2 = chandef->center_freq2;
+        req->ch_width = bw2chnl[chandef->width];
+    } else {
+        req->chan.freq = (u16_l)-1;
+    }
 
     /* Send the APM_START_CAC_REQ message to LMAC FW */
     return rwnx_send_msg(rwnx_hw, req, 1, APM_START_CAC_CFM, cfm);

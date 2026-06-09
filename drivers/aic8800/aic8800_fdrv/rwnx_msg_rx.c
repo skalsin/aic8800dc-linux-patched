@@ -689,40 +689,52 @@ static inline int rwnx_rx_scanu_result_ind(struct rwnx_hw *rwnx_hw,
                                         (struct ieee80211_mgmt *)ind->payload,
                                         ind->length, ind->rssi * 100, GFP_ATOMIC);
 
-		//print scan result info start
-		ssid_len = ie[1];
-		ssid = (char *)kmalloc(sizeof(char)* (ssid_len + 1), GFP_ATOMIC);
-		memset(ssid, 0, ssid_len + 1);
-		memcpy(ssid, &ie[2], ssid_len);
-		freq = ind->center_freq;
-		AICWFDBG(LOGDEBUG, "%s %02x:%02x:%02x:%02x:%02x:%02x ssid:%s freq:%d timestamp:%ld, %d\r\n", __func__, 
-			bss->bssid[0],bss->bssid[1],bss->bssid[2],
-			bss->bssid[3],bss->bssid[4],bss->bssid[5],
-			ssid, freq, (long)mgmt->u.probe_resp.timestamp, ind->rssi);
-		kfree(ssid);
-		ssid = NULL;
-		//print scan result info end
-		
+		if (bss != NULL) {
+			//print scan result info start
+			ssid_len = ie[1];
+			ssid = (char *)kmalloc(sizeof(char)* (ssid_len + 1), GFP_ATOMIC);
+			if (ssid) {
+				memset(ssid, 0, ssid_len + 1);
+				memcpy(ssid, &ie[2], ssid_len);
+			}
+			freq = ind->center_freq;
+			AICWFDBG(LOGDEBUG, "%s %02x:%02x:%02x:%02x:%02x:%02x ssid:%s freq:%d timestamp:%ld, %d\r\n", __func__, 
+				bss->bssid[0],bss->bssid[1],bss->bssid[2],
+				bss->bssid[3],bss->bssid[4],bss->bssid[5],
+				ssid ? ssid : "", freq, (long)mgmt->u.probe_resp.timestamp, ind->rssi);
+			kfree(ssid);
+			ssid = NULL;
+			//print scan result info end
+			
 #ifdef CONFIG_USE_WIRELESS_EXT
-		if(rwnx_hw->wext_scan){
-			
-			scan_re_wext = (struct scanu_result_wext *)vmalloc(sizeof(struct scanu_result_wext));
-			scan_re_wext->ind = (struct scanu_result_ind *)vmalloc(sizeof(struct scanu_result_ind));
-			scan_re_wext->payload = (u32_l *)vmalloc(sizeof(u32_l) * ind->length);
+			if(rwnx_hw->wext_scan){
+				
+				scan_re_wext = (struct scanu_result_wext *)vmalloc(sizeof(struct scanu_result_wext));
+				if (scan_re_wext) {
+					scan_re_wext->ind = (struct scanu_result_ind *)vmalloc(sizeof(struct scanu_result_ind));
+					scan_re_wext->payload = (u32_l *)vmalloc(sizeof(u32_l) * ind->length);
 
-			memset(scan_re_wext->ind, 0, sizeof(struct scanu_result_ind));
-			memset(scan_re_wext->payload, 0, ind->length);
-			
-			memcpy(scan_re_wext->ind, ind, sizeof(struct scanu_result_ind));
-			memcpy(scan_re_wext->payload, ind->payload, ind->length);
-	
-			scan_re_wext->bss = bss;
+					if (scan_re_wext->ind && scan_re_wext->payload) {
+						memset(scan_re_wext->ind, 0, sizeof(struct scanu_result_ind));
+						memset(scan_re_wext->payload, 0, ind->length);
+						
+						memcpy(scan_re_wext->ind, ind, sizeof(struct scanu_result_ind));
+						memcpy(scan_re_wext->payload, ind->payload, ind->length);
+				
+						scan_re_wext->bss = bss;
 
-			INIT_LIST_HEAD(&scan_re_wext->scanu_re_list);
-			list_add_tail(&scan_re_wext->scanu_re_list, &rwnx_hw->wext_scanre_list);
-			return 0;
-		}
+						INIT_LIST_HEAD(&scan_re_wext->scanu_re_list);
+						list_add_tail(&scan_re_wext->scanu_re_list, &rwnx_hw->wext_scanre_list);
+					} else {
+						if (scan_re_wext->ind) vfree(scan_re_wext->ind);
+						if (scan_re_wext->payload) vfree(scan_re_wext->payload);
+						vfree(scan_re_wext);
+					}
+				}
+				return 0;
+			}
 #endif
+		}
     }
 
     if (bss != NULL)
@@ -845,6 +857,8 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
         u8 txq_status;
         struct cfg80211_chan_def chandef;
 
+        memset(&chandef, 0, sizeof(chandef));
+
         sta->valid = true;
         sta->sta_idx = ind->ap_idx;
         sta->ch_idx = ind->ch_idx;
@@ -862,14 +876,19 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
         rwnx_vif->sta.ap = sta;
 
         chan = ieee80211_get_channel(rwnx_hw->wiphy, ind->center_freq);
-        cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_NO_HT);
-        if (!rwnx_hw->mod_params->ht_on)
-            chandef.width = NL80211_CHAN_WIDTH_20_NOHT;
-        else
-            chandef.width = chnl2bw[ind->width];
-        chandef.center_freq1 = ind->center_freq1;
-        chandef.center_freq2 = ind->center_freq2;
-        rwnx_chanctx_link(rwnx_vif, ind->ch_idx, &chandef);
+        if (chan) {
+            cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_NO_HT);
+            if (!rwnx_hw->mod_params->ht_on)
+                chandef.width = NL80211_CHAN_WIDTH_20_NOHT;
+            else
+                chandef.width = chnl2bw[ind->width];
+            chandef.center_freq1 = ind->center_freq1;
+            chandef.center_freq2 = ind->center_freq2;
+            rwnx_chanctx_link(rwnx_vif, ind->ch_idx, &chandef);
+        } else {
+            AICWFDBG(LOGERROR, "%s: Channel not found for freq %d, linking with NULL chandef\n", __func__, ind->center_freq);
+            rwnx_chanctx_link(rwnx_vif, ind->ch_idx, NULL);
+        }
         memcpy(sta->mac_addr, ind->bssid.array, ETH_ALEN);
         if (ind->ch_idx == rwnx_hw->cur_chanctx) {
             txq_status = 0;

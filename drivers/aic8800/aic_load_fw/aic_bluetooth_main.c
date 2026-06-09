@@ -27,20 +27,32 @@ module_param(adap_test, int, 0660);
 module_param_string(paringid, paringid, 100, 0660);
 
 
-static void aicsmac_driver_register(void)
+static int aicsmac_driver_register(void)
 {
-    aicwf_usb_register();
+    return aicwf_usb_register();
 }
 
 static int __init aic_bluetooth_mod_init(void)
 {
+    int ret;
     printk("%s \n", __func__);
     printk("RELEASE DATE:%s \r\n", RELEASE_DATE);
 #ifdef CONFIG_PREALLOC_RX_SKB
-    aicwf_prealloc_init();
+    ret = aicwf_prealloc_init();
+    if (ret < 0) {
+        printk("aicwf_prealloc_init failed: %d\n", ret);
+        return ret;
+    }
 #endif
 
-    aicsmac_driver_register();
+    ret = aicsmac_driver_register();
+    if (ret < 0) {
+        printk("aicsmac_driver_register failed: %d\n", ret);
+#ifdef CONFIG_PREALLOC_RX_SKB
+        aicwf_prealloc_exit();
+#endif
+        return ret;
+    }
     return 0;
 }
 
