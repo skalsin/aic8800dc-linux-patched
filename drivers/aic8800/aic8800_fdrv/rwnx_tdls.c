@@ -706,9 +706,11 @@ rwnx_tdls_send_mgmt_packet_data(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_v
     #endif
     int channels = rwnx_band_2GHz->n_channels;
 
+	#ifdef USE_5G
 	if (rwnx_hw->band_5g_support){
 		channels += rwnx_band_5GHz->n_channels;
 	}
+	#endif
 
     skb = netdev_alloc_skb(rwnx_vif->ndev,
               sizeof(struct ieee80211_tdls_data) + // ethhdr + TDLS info

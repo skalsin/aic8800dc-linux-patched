@@ -1111,8 +1111,8 @@ static void rwnx_set_vht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 #endif
 	        band_5GHz->vht_cap.cap &= ~IEEE80211_VHT_CAP_SHORT_GI_80;
 	    }
-//#endif
 	}
+#endif
 }
 
 static void rwnx_set_ht_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
@@ -1519,8 +1519,8 @@ static void rwnx_set_he_capa(struct rwnx_hw *rwnx_hw, struct wiphy *wiphy)
 	        he_cap->he_mcs_nss_supp.tx_mcs_160 |= unsup_for_ss;
 	        he_cap->he_mcs_nss_supp.tx_mcs_80p80 |= unsup_for_ss;
 	    }
-	}
-#endif
+    }
+//#endif
 #endif
 }
 
