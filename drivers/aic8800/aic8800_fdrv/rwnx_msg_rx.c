@@ -876,6 +876,44 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
         rwnx_vif->sta.ap = sta;
 
         chan = ieee80211_get_channel(rwnx_hw->wiphy, ind->center_freq);
+        if (!chan && ind->center_freq == 0) {
+            /* Firmware bug: center_freq is 0 when compiled with CONFIG_USE_5G=n.
+             * Try multiple fallbacks to resolve the actual channel. */
+
+            /* Fallback 1: try center_freq1 if set */
+            if (ind->center_freq1 != 0)
+                chan = ieee80211_get_channel(rwnx_hw->wiphy, ind->center_freq1);
+
+            /* Fallback 2: look up the BSS from cfg80211 cache */
+            if (!chan) {
+                struct cfg80211_bss *bss = cfg80211_get_bss(rwnx_hw->wiphy, NULL,
+                                            (const u8 *)ind->bssid.array, NULL, 0,
+                                            IEEE80211_BSS_TYPE_ESS,
+                                            IEEE80211_PRIVACY_ANY);
+                if (bss) {
+                    chan = bss->channel;
+                    cfg80211_put_bss(rwnx_hw->wiphy, bss);
+                }
+            }
+
+            /* Fallback 3: use the wiphy's band to find any valid channel.
+             * The band field in the indication is set correctly even when
+             * center_freq is 0. Use channel index 0 as a safe default. */
+            if (!chan) {
+                struct ieee80211_supported_band *sband;
+                sband = rwnx_hw->wiphy->bands[ind->band];
+                if (sband && sband->n_channels > 0)
+                    chan = &sband->channels[0];
+            }
+
+            if (chan) {
+                AICWFDBG(LOGINFO, "%s: Firmware returned freq 0, resolved to %d MHz\n",
+                         __func__, chan->center_freq);
+                ind->center_freq = chan->center_freq;
+                if (ind->center_freq1 == 0)
+                    ind->center_freq1 = chan->center_freq;
+            }
+        }
         if (chan) {
             cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_NO_HT);
             if (!rwnx_hw->mod_params->ht_on)
@@ -884,6 +922,31 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
                 chandef.width = chnl2bw[ind->width];
             chandef.center_freq1 = ind->center_freq1;
             chandef.center_freq2 = ind->center_freq2;
+
+            /* Check and sanitize invalid chandef configurations */
+            if (!cfg80211_chandef_valid(&chandef)) {
+                AICWFDBG(LOGINFO, "%s: Sanitize invalid chandef (width=%d, center1=%d, center2=%d)\n",
+                         __func__, chandef.width, chandef.center_freq1, chandef.center_freq2);
+                if (chandef.width == NL80211_CHAN_WIDTH_40) {
+                    /* Correct HT40 center frequency is primary +/- 10 MHz.
+                     * Use the standard conventions. */
+                    if (chan->center_freq <= 2452)
+                        chandef.center_freq1 = chan->center_freq + 10;
+                    else
+                        chandef.center_freq1 = chan->center_freq - 10;
+                } else {
+                    chandef.width = NL80211_CHAN_WIDTH_20;
+                    chandef.center_freq1 = chan->center_freq;
+                }
+                chandef.center_freq2 = 0;
+
+                /* Ultimate fallback if it still doesn't satisfy validation rules */
+                if (!cfg80211_chandef_valid(&chandef)) {
+                    chandef.width = NL80211_CHAN_WIDTH_20_NOHT;
+                    chandef.center_freq1 = chan->center_freq;
+                    chandef.center_freq2 = 0;
+                }
+            }
             rwnx_chanctx_link(rwnx_vif, ind->ch_idx, &chandef);
         } else {
             AICWFDBG(LOGERROR, "%s: Channel not found for freq %d, linking with NULL chandef\n", __func__, ind->center_freq);

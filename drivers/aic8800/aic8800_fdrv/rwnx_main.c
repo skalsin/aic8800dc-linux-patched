@@ -4718,8 +4718,15 @@ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
         }
 
         mon_chandef.chan = ieee80211_get_channel(wiphy, cfm.chan.prim20_freq);
+        if (!mon_chandef.chan && cfm.chan.prim20_freq == 0) {
+            /* Firmware bug: prim20_freq is 0 when compiled with CONFIG_USE_5G=n.
+             * Use the first available 2.4GHz channel as fallback for monitor mode. */
+            mon_chandef.chan = ieee80211_get_channel(wiphy, 2412);
+            if (mon_chandef.chan)
+                AICWFDBG(LOGINFO, "%s: Firmware returned freq 0 for monitor, using 2412 MHz fallback\n", __func__);
+        }
         if (mon_chandef.chan) {
-            mon_chandef.center_freq1 = cfm.chan.center1_freq;
+            mon_chandef.center_freq1 = cfm.chan.center1_freq ? cfm.chan.center1_freq : mon_chandef.chan->center_freq;
             mon_chandef.center_freq2 = cfm.chan.center2_freq;
             mon_chandef.width =  chnl2bw[cfm.chan.type];
             rwnx_chanctx_link(rwnx_vif, cfm.chan_index, &mon_chandef);
