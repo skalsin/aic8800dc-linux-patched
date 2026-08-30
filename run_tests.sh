@@ -9,12 +9,19 @@ echo "AIC8800 Driver & Stability Comprehensive Test Suite"
 echo "=================================================="
 
 # Run bash sanity check test.sh
-echo "[1/2] Running deployment sanity checks (test.sh)..."
+echo "[1/3] Running deployment sanity checks (test.sh)..."
 bash "$REPO_DIR/test.sh"
+
+# Run C ASan/UBSan/TSan harnesses
+echo ""
+echo "[2/3] Running AddressSanitizer, UBSan & ThreadSanitizer C harnesses..."
+if [ -d "$REPO_DIR/tests/c_harness" ]; then
+    make -C "$REPO_DIR/tests/c_harness" run
+fi
 
 # Run pytest suite
 echo ""
-echo "[2/2] Running automated regression and link quality tests (pytest)..."
+echo "[3/3] Running automated regression and link quality tests (pytest)..."
 PYTEST_BIN=""
 if command -v pytest &>/dev/null; then
     PYTEST_BIN="pytest"
@@ -33,5 +40,5 @@ fi
 
 echo ""
 echo "=================================================="
-echo "All tests completed successfully!"
+echo "All tests and memory sanitizers completed successfully!"
 echo "=================================================="
