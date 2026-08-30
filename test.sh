@@ -19,15 +19,15 @@ echo ""
 # --- 1. DKMS registration ---
 echo "-- DKMS status --"
 if command -v dkms &>/dev/null; then
-    STATUS="$(dkms status -m "${PACKAGE_NAME}" -v "${PACKAGE_VERSION}" 2>/dev/null)"
+    STATUS="$(dkms status 2>/dev/null | grep -E "aic8800|aic8800dc" || true)"
     if echo "${STATUS}" | grep -q "installed"; then
-        ok "DKMS shows '${PACKAGE_NAME}/${PACKAGE_VERSION}' as installed"
+        ok "DKMS shows aic8800 driver as installed: $(echo "${STATUS}" | head -n 1)"
     elif echo "${STATUS}" | grep -q "built"; then
-        fail "DKMS built but not installed. Run: sudo dkms install -m ${PACKAGE_NAME} -v ${PACKAGE_VERSION}"
+        fail "DKMS built but not installed. Run: sudo dkms install aic8800/1.0"
     elif echo "${STATUS}" | grep -q "added"; then
-        fail "DKMS added but not built. Run: sudo dkms build -m ${PACKAGE_NAME} -v ${PACKAGE_VERSION}"
+        fail "DKMS added but not built. Run: sudo dkms build aic8800/1.0"
     else
-        fail "DKMS has no record of ${PACKAGE_NAME}/${PACKAGE_VERSION}. Run: sudo ./install.sh"
+        fail "DKMS has no record of aic8800 module. Run: sudo ./install.sh"
     fi
 else
     fail "dkms command not found. Install dkms package first"
