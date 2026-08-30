@@ -824,20 +824,117 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
                                          struct ipc_e2a_msg *msg)
 {
     struct sm_connect_ind *ind = (struct sm_connect_ind *)msg->param;
-    struct rwnx_vif *rwnx_vif = rwnx_hw->vif_table[ind->vif_idx];
+    struct rwnx_vif *rwnx_vif;
     struct net_device *dev = NULL;
     const u8 *req_ie, *rsp_ie;
     const u8 *extcap_ie;
     const struct ieee_types_extcap *extcap;
     struct ieee80211_channel *chan;
+    struct cfg80211_bss *connect_bss;
+    u16 connect_status;
+    bool had_pending_bss;
+    bool roamed;
 
     RWNX_DBG(RWNX_FN_ENTRY_STR);
 
-	if(!rwnx_vif){
-		AICWFDBG(LOGERROR, "%s rwnx_vif is null \r\n", __func__);
-		return 0;
-	}
-	dev = rwnx_vif->ndev;
+    if (ind->vif_idx >= NX_VIRT_DEV_MAX) {
+        AICWFDBG(LOGERROR, "%s invalid vif_idx:%u\r\n", __func__, ind->vif_idx);
+        return 0;
+    }
+
+    rwnx_vif = rwnx_hw->vif_table[ind->vif_idx];
+    if (!rwnx_vif) {
+        AICWFDBG(LOGERROR, "%s rwnx_vif is null\r\n", __func__);
+        return 0;
+    }
+
+    if (ind->assoc_req_ie_len > SM_ASSOC_IE_LEN ||
+        ind->assoc_rsp_ie_len > SM_ASSOC_IE_LEN - ind->assoc_req_ie_len) {
+        AICWFDBG(LOGERROR,
+                 "%s invalid association IE lengths req:%u rsp:%u\r\n",
+                 __func__, ind->assoc_req_ie_len, ind->assoc_rsp_ie_len);
+        connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+        if (connect_bss) {
+            atomic_set(&rwnx_vif->drv_conn_state,
+                       RWNX_DRV_STATUS_DISCONNECTED);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+            cfg80211_connect_bss(rwnx_vif->ndev,
+                                 (const u8 *)ind->bssid.array,
+                                 connect_bss, NULL, 0, NULL, 0,
+                                 WLAN_STATUS_UNSPECIFIED_FAILURE,
+                                 GFP_ATOMIC, NL80211_TIMEOUT_UNSPECIFIED);
+#else
+            cfg80211_put_bss(rwnx_hw->wiphy, connect_bss);
+            cfg80211_connect_result(rwnx_vif->ndev,
+                                    (const u8 *)ind->bssid.array,
+                                    NULL, 0, NULL, 0,
+                                    WLAN_STATUS_UNSPECIFIED_FAILURE,
+                                    GFP_ATOMIC);
+#endif
+        }
+        return 0;
+    }
+
+    roamed = ind->roamed != 0;
+    connect_status = ind->status_code;
+    connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+    had_pending_bss = connect_bss != NULL;
+    if (connect_bss &&
+        !ether_addr_equal(connect_bss->bssid,
+                          (const u8 *)ind->bssid.array)) {
+        cfg80211_put_bss(rwnx_hw->wiphy, connect_bss);
+        connect_bss = NULL;
+    }
+    dev = rwnx_vif->ndev;
+
+    /* Every non-roaming indication must consume the reference published by
+     * its cfg80211 connect request.  If it is gone, disconnect/close/error
+     * handling already owns that request and this is a stale firmware event.
+     * Looking up a fresh BSS here would incorrectly resurrect and complete a
+     * request that another path has already cancelled. */
+    if (!roamed && !had_pending_bss) {
+        netdev_warn(dev,
+                    "dropping stale connect indication: bssid=%pM status=%u state=%d\n",
+                    ind->bssid.array, ind->status_code,
+                    atomic_read(&rwnx_vif->drv_conn_state));
+        return 0;
+    }
+
+    /* An SSID-only request may retain a different AP with the same SSID.
+     * Since this handler owned the pending token, replace that reference with
+     * the exact BSS selected by firmware before reporting success. */
+    if (!roamed && ind->status_code == WLAN_STATUS_SUCCESS && !connect_bss)
+        connect_bss = cfg80211_get_bss(rwnx_hw->wiphy, NULL,
+                                       (const u8 *)ind->bssid.array,
+                                       NULL, 0,
+                                       IEEE80211_BSS_TYPE_ESS,
+                                       IEEE80211_PRIVACY_ANY);
+
+    /* Do not create a station that cfg80211 cannot adopt.  Apart from being
+     * inconsistent, doing that used to leave a phantom connected STA after
+     * the completion had been downgraded to failure. */
+    if (!roamed && ind->status_code == WLAN_STATUS_SUCCESS && !connect_bss) {
+        AICWFDBG(LOGERROR,
+                 "%s connected BSS is missing from scan cache; reporting failure\r\n",
+                 __func__);
+        atomic_set(&rwnx_vif->drv_conn_state,
+                   RWNX_DRV_STATUS_DISCONNECTED);
+        connect_status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+    }
+
+    if (connect_status == WLAN_STATUS_SUCCESS &&
+        (ind->ap_idx >= (NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX) ||
+         ind->ch_idx >= NX_CHAN_CTXT_CNT ||
+         ind->band >= PHY_BAND_MAX ||
+         !rwnx_hw->wiphy->bands[ind->band] ||
+         ind->width >= PHY_CHNL_BW_OTHER)) {
+        AICWFDBG(LOGERROR,
+                 "%s invalid connect metadata ap:%u ch:%u band:%u width:%u\r\n",
+                 __func__, ind->ap_idx, ind->ch_idx, ind->band, ind->width);
+        atomic_set(&rwnx_vif->drv_conn_state,
+                   RWNX_DRV_STATUS_DISCONNECTED);
+        connect_status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+    }
 
 
     /* Retrieve IE addresses and lengths */
@@ -850,12 +947,14 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
 
 
     // Fill-in the AP information
-	AICWFDBG(LOGINFO, "%s ind->status_code:%d \r\n", __func__, ind->status_code);
-    if (ind->status_code == 0)
+    AICWFDBG(LOGINFO, "%s ind->status_code:%d \r\n", __func__, ind->status_code);
+    if (connect_status == WLAN_STATUS_SUCCESS)
     {
-        struct rwnx_sta *sta = &rwnx_hw->sta_table[ind->ap_idx];
+        struct rwnx_sta *sta;
         u8 txq_status;
         struct cfg80211_chan_def chandef;
+
+        sta = &rwnx_hw->sta_table[ind->ap_idx];
 
         memset(&chandef, 0, sizeof(chandef));
 
@@ -864,7 +963,7 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
         sta->ch_idx = ind->ch_idx;
         sta->vif_idx = ind->vif_idx;
         sta->vlan_idx = sta->vif_idx;
-        sta->qos = ind->qos;
+        sta->qos = ind->qos != 0;
         sta->acm = ind->acm;
         sta->ps.active = false;
         sta->aid = ind->aid;
@@ -1029,21 +1128,47 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
 	}
 
 
-    AICWFDBG(LOGINFO, "%s ind->roamed:%d ind->status_code:%d rwnx_vif->drv_conn_state:%d\r\n", 
+    AICWFDBG(LOGINFO, "%s ind->roamed:%d ind->status_code:%d reported_status:%d rwnx_vif->drv_conn_state:%d\r\n",
         __func__, 
-        ind->roamed, 
+        roamed,
         ind->status_code,
+        connect_status,
         (int)atomic_read(&rwnx_vif->drv_conn_state));
 
+    netdev_info(dev,
+                "connect completion: bssid=%pM fw_status=%u reported_status=%u retained_bss=%u roam=%u ap=%u ch=%u band=%u width=%u state=%d\n",
+                ind->bssid.array, ind->status_code, connect_status,
+                connect_bss != NULL, roamed, ind->ap_idx, ind->ch_idx,
+                ind->band, ind->width,
+                atomic_read(&rwnx_vif->drv_conn_state));
 
-    if (!ind->roamed) {//not roaming
+
+    if (!roamed) {//not roaming
+        /* A successful cfg80211 completion needs both values on newer kernels:
+         * the live BSS is consumed as the current BSS, while the explicit
+         * BSSID is still used as connected_addr.  Supplying either one as NULL
+         * has caused __cfg80211_connect_result() NULL dereferences. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+        cfg80211_connect_bss(dev,
+                             (const u8 *)ind->bssid.array,
+                             connect_bss, req_ie, ind->assoc_req_ie_len,
+                             rsp_ie, ind->assoc_rsp_ie_len, connect_status,
+                             GFP_ATOMIC, NL80211_TIMEOUT_UNSPECIFIED);
+#else
+        if (connect_bss)
+            cfg80211_put_bss(rwnx_hw->wiphy, connect_bss);
         cfg80211_connect_result(dev, (const u8 *)ind->bssid.array, req_ie,
                                 ind->assoc_req_ie_len, rsp_ie,
-                                ind->assoc_rsp_ie_len, ind->status_code,
+                                ind->assoc_rsp_ie_len, connect_status,
                                 GFP_ATOMIC);
+#endif
     }
     else {//roaming
-        if(ind->status_code != 0){
+        if (connect_bss) {
+            cfg80211_put_bss(rwnx_hw->wiphy, connect_bss);
+            connect_bss = NULL;
+        }
+        if(connect_status != WLAN_STATUS_SUCCESS){
             AICWFDBG(LOGINFO, "%s roaming fail to notify disconnect \r\n", __func__);
 			cfg80211_disconnected(dev, 0, NULL, 0,1, GFP_ATOMIC);
         }else{
@@ -1133,7 +1258,7 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
                                             struct ipc_e2a_msg *msg)
 {
     struct sm_disconnect_ind *ind = (struct sm_disconnect_ind *)msg->param;
-    struct rwnx_vif *rwnx_vif = rwnx_hw->vif_table[ind->vif_idx];
+    struct rwnx_vif *rwnx_vif;
     struct net_device *dev;
 #ifdef AICWF_RX_REORDER
     struct reord_ctrl_info *reord_info, *tmp;
@@ -1144,6 +1269,12 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
     RWNX_DBG(RWNX_FN_ENTRY_STR);
     dhcped = 0;
 
+    if (ind->vif_idx >= NX_VIRT_DEV_MAX) {
+        AICWFDBG(LOGERROR, "%s invalid vif_idx:%u\r\n", __func__, ind->vif_idx);
+        return 0;
+    }
+
+    rwnx_vif = rwnx_hw->vif_table[ind->vif_idx];
     if(!rwnx_vif){
 		AICWFDBG(LOGERROR, "%s rwnx_vif is null \r\n", __func__);
 		//atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
@@ -1164,7 +1295,7 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
         rwnx_hw->is_p2p_connected = 0;
     /* if vif is not up, rwnx_close has already been called */
     if (rwnx_vif->up) {
-        if (!ind->ft_over_ds) {
+        if (ind->ft_over_ds == 0) {
             cfg80211_disconnected(dev, ind->reason_code, NULL, 0,
                                   (ind->reason_code <= 1), GFP_ATOMIC);
         }
@@ -1174,7 +1305,8 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
 
 #ifdef CONFIG_RWNX_BFMER
     /* Disable Beamformer if supported */
-    rwnx_bfmer_report_del(rwnx_hw, rwnx_vif->sta.ap);
+    if (rwnx_vif->sta.ap)
+        rwnx_bfmer_report_del(rwnx_hw, rwnx_vif->sta.ap);
 #endif //(CONFIG_RWNX_BFMER)
 
 #ifdef AICWF_RX_REORDER
@@ -1201,13 +1333,15 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
         BUG();//should be not here: del_sta function
 #endif
 
-    rwnx_txq_sta_deinit(rwnx_hw, rwnx_vif->sta.ap);
+    if (rwnx_vif->sta.ap) {
+        rwnx_txq_sta_deinit(rwnx_hw, rwnx_vif->sta.ap);
+        #if 0
+        rwnx_dbgfs_unregister_rc_stat(rwnx_hw, rwnx_vif->sta.ap);
+        #endif
+        rwnx_vif->sta.ap->valid = false;
+        rwnx_vif->sta.ap = NULL;
+    }
     rwnx_txq_tdls_vif_deinit(rwnx_vif);
-    #if 0
-    rwnx_dbgfs_unregister_rc_stat(rwnx_hw, rwnx_vif->sta.ap);
-    #endif
-    rwnx_vif->sta.ap->valid = false;
-    rwnx_vif->sta.ap = NULL;
     rwnx_external_auth_disable(rwnx_vif);
     rwnx_chanctx_unlink(rwnx_vif);
 
@@ -1634,4 +1768,3 @@ void rwnx_rx_handle_print(struct rwnx_hw *rwnx_hw, u8 *msg, u32 len)
     spin_unlock_bh(&rwnx_hw->debugfs.fw_log.lock);
 #endif
 }
-

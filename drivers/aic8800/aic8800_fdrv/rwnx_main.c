@@ -1324,6 +1324,7 @@ static int rwnx_close(struct net_device *dev)
 {
     struct rwnx_vif *rwnx_vif = netdev_priv(dev);
     struct rwnx_hw *rwnx_hw = rwnx_vif->rwnx_hw;
+    struct cfg80211_bss *connect_bss;
     struct aicwf_bus *bus_if = NULL;
 	int ret = 0;
 #if defined(AICWF_USB_SUPPORT)
@@ -1382,8 +1383,15 @@ static int rwnx_close(struct net_device *dev)
 		if (ret) {
 			AICWFDBG(LOGERROR, "scanu_cancel fail\n");
 			return ret;
-		}
+        }
     }
+
+    /* The interface is going away, so no connect indication can safely
+     * transfer this reference to cfg80211.  xchg makes this race-safe
+     * against an indication already being handled. */
+    connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+    if (connect_bss)
+        cfg80211_put_bss(rwnx_hw->wiphy, connect_bss);
 
 #if defined(AICWF_USB_SUPPORT)
     if (usbdev != NULL) {
@@ -3688,6 +3696,7 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
     struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
     struct rwnx_vif *rwnx_vif = netdev_priv(dev);
     struct sm_connect_cfm sm_connect_cfm;
+    struct cfg80211_bss *connect_bss;
     int error = 0;
     int is_wep = ((sme->crypto.cipher_group == WLAN_CIPHER_SUITE_WEP40) ||
 	                (sme->crypto.cipher_group == WLAN_CIPHER_SUITE_WEP104) ||
@@ -3695,6 +3704,11 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		            (sme->crypto.n_ciphers_pairwise && (sme->crypto.ciphers_pairwise[0] == WLAN_CIPHER_SUITE_WEP104)));
 
     RWNX_DBG(RWNX_FN_ENTRY_STR);
+
+    /* Drop a reference left by any aborted request before starting another. */
+    connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+    if (connect_bss)
+        cfg80211_put_bss(wiphy, connect_bss);
 
 #if 1
 #if 0
@@ -3757,6 +3771,7 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
     else if ((sme->auth_type == NL80211_AUTHTYPE_SAE) &&
              !(sme->flags & CONNECT_REQ_EXTERNAL_AUTH_SUPPORT)) {
         netdev_err(dev, "Doesn't support SAE without external authentication\n");
+        atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
         return -EINVAL;
     }
 #endif
@@ -3771,9 +3786,32 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
     }
 
 
+    /* cfg80211 requires a live BSS entry when reporting a successful
+     * connection.  BSSID is optional for normal SSID-only connect requests,
+     * so look up and retain the selected scan entry in both cases. */
+    connect_bss = cfg80211_get_bss(wiphy, sme->channel, sme->bssid,
+                                   sme->ssid, sme->ssid_len,
+                                   IEEE80211_BSS_TYPE_ESS,
+                                   IEEE80211_PRIVACY_ANY);
+    if (!connect_bss) {
+        AICWFDBG(LOGINFO,
+                 "%s requested network is not in the scan cache; scan first\r\n",
+                 __func__);
+        atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
+        return -ENOENT;
+    }
+    connect_bss = xchg(&rwnx_vif->sta.connect_bss, connect_bss);
+    if (WARN_ON(connect_bss))
+        cfg80211_put_bss(wiphy, connect_bss);
+
     /* Forward the information to the LMAC */
-    if ((error = rwnx_send_sm_connect_req(rwnx_hw, rwnx_vif, sme, &sm_connect_cfm)))
+    if ((error = rwnx_send_sm_connect_req(rwnx_hw, rwnx_vif, sme, &sm_connect_cfm))) {
+        connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+        if (connect_bss)
+            cfg80211_put_bss(wiphy, connect_bss);
+        atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
         return error;
+    }
 
     // Check the status
     switch (sm_connect_cfm.status)
@@ -3790,6 +3828,13 @@ static int rwnx_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
         default:
             error = -EIO;
             break;
+    }
+
+    if (error) {
+        connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+        if (connect_bss)
+            cfg80211_put_bss(wiphy, connect_bss);
+        atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
     }
 
     return error;
@@ -3827,9 +3872,8 @@ static int rwnx_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 	}
 #endif
 	if(atomic_read(&rwnx_vif->drv_conn_state) == RWNX_DRV_STATUS_CONNECTING){
-		AICWFDBG(LOGINFO, "%s call cfg80211_connect_result reason:%d \r\n",
+		AICWFDBG(LOGINFO, "%s abort connecting state for disconnect reason:%d \r\n",
 			__func__, reason_code);
-		msleep(500);
 	}
 
 	if(atomic_read(&rwnx_vif->drv_conn_state) == RWNX_DRV_STATUS_CONNECTED){
@@ -3841,8 +3885,23 @@ static int rwnx_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 		key_flag = true;
 		return(rwnx_send_sm_disconnect_req(rwnx_hw, rwnx_vif, reason_code));
 	}else{
-		cfg80211_connect_result(dev,  NULL, NULL, 0, NULL, 0,
-			reason_code?reason_code:WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_ATOMIC);
+        struct cfg80211_bss *connect_bss;
+
+        connect_bss = xchg(&rwnx_vif->sta.connect_bss, NULL);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+        if (connect_bss)
+            cfg80211_connect_bss(dev, connect_bss->bssid, connect_bss,
+                                NULL, 0, NULL, 0,
+                                WLAN_STATUS_UNSPECIFIED_FAILURE,
+                                GFP_ATOMIC, NL80211_TIMEOUT_UNSPECIFIED);
+        else
+            netdev_info(dev, "disconnect found no pending connect request\n");
+#else
+        if (connect_bss)
+            cfg80211_put_bss(wiphy, connect_bss);
+        cfg80211_connect_result(dev, NULL, NULL, 0, NULL, 0,
+			WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_ATOMIC);
+#endif
 		atomic_set(&rwnx_vif->drv_conn_state, RWNX_DRV_STATUS_DISCONNECTED);
 		return 0;
 	}
@@ -9278,4 +9337,3 @@ MODULE_DESCRIPTION(RW_DRV_DESCRIPTION);
 MODULE_VERSION(RWNX_VERS_MOD);
 MODULE_AUTHOR(RW_DRV_COPYRIGHT " " RW_DRV_AUTHOR);
 MODULE_LICENSE("GPL");
-
