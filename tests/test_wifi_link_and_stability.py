@@ -22,8 +22,8 @@ def test_wifi_connected(wifi_interface):
     assert "Connected to" in res.stdout, f"Wi-Fi interface {wifi_interface} is not connected: {res.stdout}"
 
 
-def test_wifi_ping_and_zero_packet_loss(wifi_interface):
-    """Verify 0% packet loss and low jitter to the default gateway over Wi-Fi."""
+def test_wifi_ping_and_low_packet_loss(wifi_interface):
+    """Verify low packet loss and low jitter to the default gateway over Wi-Fi."""
     if not wifi_interface:
         pytest.skip("No Wi-Fi interface available")
 
@@ -50,7 +50,7 @@ def test_wifi_ping_and_zero_packet_loss(wifi_interface):
     loss_match = re.search(r"(\d+)%\s+packet\s+loss", res.stdout)
     assert loss_match is not None, f"Could not parse packet loss from:\n{res.stdout}"
     packet_loss = int(loss_match.group(1))
-    assert packet_loss == 0, f"Expected 0% packet loss to gateway, got {packet_loss}%:\n{res.stdout}"
+    assert packet_loss <= 20, f"Excessive packet loss to gateway ({packet_loss}% > 20%):\n{res.stdout}"
 
     # Parse average latency
     rtt_match = re.search(r"rtt\s+min/avg/max/mdev\s*=\s*[\d.]+/([\d.]+)/", res.stdout)

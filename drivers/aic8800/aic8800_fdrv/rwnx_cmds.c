@@ -228,8 +228,6 @@ static int cmd_mgr_queue(struct rwnx_cmd_mgr *cmd_mgr, struct rwnx_cmd *cmd)
 
             cmd_dump(cmd);
             spin_lock_bh(&cmd_mgr->lock);
-            //AIDEN workaround 
-            cmd_mgr->state = RWNX_CMD_MGR_STATE_CRASHED;
             if (!(cmd->flags & RWNX_CMD_FLAG_DONE)) {
                 cmd->result = -ETIMEDOUT;
                 cmd_complete(cmd_mgr, cmd);
@@ -341,8 +339,6 @@ void cmd_mgr_task_process(struct work_struct *work)
                 printk(KERN_CRIT"%s cmd timed-out cmd_mgr->queue_sz:%d\n", __func__, cmd_mgr->queue_sz);
                 cmd_dump(next);
                 spin_lock_bh(&cmd_mgr->lock);
-                //AIDEN  workaround  
-                cmd_mgr->state = RWNX_CMD_MGR_STATE_CRASHED;
                 if (!(next->flags & RWNX_CMD_FLAG_DONE)) {
                     next->result = -ETIMEDOUT;
                     cmd_complete(cmd_mgr, next);

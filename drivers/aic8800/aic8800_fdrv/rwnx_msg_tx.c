@@ -446,6 +446,7 @@ static int rwnx_send_msg(struct rwnx_hw *rwnx_hw, const void *msg_params,
         cmd->flags |= RWNX_CMD_FLAG_REQ_CFM;
 
     if(cfm != NULL) {
+        int wait_count = 0;
         do {
             if(rwnx_hw->cmd_mgr->state == RWNX_CMD_MGR_STATE_CRASHED)
 		break;
@@ -453,6 +454,10 @@ static int rwnx_send_msg(struct rwnx_hw *rwnx_hw, const void *msg_params,
             empty = list_empty(&rwnx_hw->cmd_mgr->cmds);
             spin_unlock_bh(&rwnx_hw->cmd_mgr->lock);
             if(!empty) {
+                if (++wait_count > 60) {
+                    AICWFDBG(LOGERROR, "cmdqueue wait timeout (%d iterations), proceeding\n", wait_count);
+                    break;
+                }
 		if(in_softirq()) {
 			#ifdef CONFIG_RWNX_DBG
 				AICWFDBG(LOGDEBUG, "in_softirq:check cmdqueue empty\n");
