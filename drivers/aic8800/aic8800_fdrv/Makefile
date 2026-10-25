@@ -68,8 +68,14 @@ CONFIG_RWNX_BFMER ?= n
 
 CONFIG_SDIO_SUPPORT =n
 CONFIG_USB_SUPPORT =y
-CONFIG_RX_REORDER ?=y
-CONFIG_ARP_OFFLOAD =y
+# Firmware already delivers ordered AMPDU traffic on AIC8800DC USB devices.
+# The host reorder implementation can retain unrelated traffic behind a
+# missing sequence number until its timer fires, causing severe loss/latency.
+CONFIG_RX_REORDER ?= n
+# Firmware ARP offload breaks fresh-neighbor resolution on AIC8800DC USB:
+# ARP eventually resolves, but subsequent traffic is lost or released in
+# multi-second bursts.  Let the kernel network stack handle ARP instead.
+CONFIG_ARP_OFFLOAD = n
 CONFIG_USE_5G = n
 CONFIG_RADAR_OR_IR_DETECT =n
 CONFIG_DOWNLOAD_FW =n
@@ -254,7 +260,7 @@ ccflags-y += -DNX_TXQ_CNT=4
 endif
 
 # For old kernel (<=3.19)
-ifeq ($(shell test $(VERSION) -lt 4 -a "$(CONFIG_VENDOR_RWNX)" = y ; echo $$?),0)
+ifeq ($(shell test -n "$(VERSION)" && test "$(VERSION)" -lt 4 && test "$(CONFIG_VENDOR_RWNX)" = y; echo $$?),0)
 ccflags-y += -DCONFIG_VENDOR_RWNX_VHT_NO80
 endif
 
@@ -371,4 +377,3 @@ uninstall:
 
 clean:
 	rm -rf *.o *.ko *.o.* *.mod.* modules.* Module.* .a* .o* .*.o.* *.mod .tmp* .cache.mk .modules.order.cmd .Module.symvers.cmd
-

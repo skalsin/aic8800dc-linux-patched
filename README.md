@@ -3,6 +3,9 @@
 Patched out-of-tree Linux kernel driver for the AIC8800DC USB Wi-Fi chipset.
 Based on upstream version 6.4.3.0 with compatibility fixes.
 
+The analysis and guarded validation procedure for the Linux 6.17 cfg80211
+connection panic are documented in [docs/PANIC-RCA.md](docs/PANIC-RCA.md).
+
 DKMS is supported. The driver rebuilds automatically after every kernel update.
 
 ---
@@ -75,12 +78,51 @@ It verifies:
 - udev rule and boot auto-load config
 - DKMS AUTOINSTALL hook presence
 
+For a read-only link, counter, USB, driver-parameter, and recent-log snapshot:
+
+```bash
+aic8800-diagnostics.sh
+```
+
+The diagnostics also report the installed and loaded module source versions,
+watchdog/kdump state, previous-boot kernel failures, and the newest persisted
+`/var/crash` dmesg files.  Each association now emits one unconditional kernel
+record beginning with `connect completion:`; it includes the firmware status,
+the status reported to cfg80211, and whether a retained BSS was supplied.
+
+Do not run an automatic module-reload watchdog while investigating a kernel
+panic.  A recovery loop can repeatedly exercise the same unsafe path and can
+erase the useful timing around the first failure.
+
+The packaged watchdog is therefore not enabled automatically.  If started, it
+defaults to read-only `observe` mode and never unloads or reloads kernel
+modules.  An opt-in `reconnect` mode may ask NetworkManager to reassociate, but
+should only be used after the normal association path is proven stable.
+
+The disconnect/reconnect and process fault-injection tests are intentionally
+opt-in. Run them only from a local session:
+
+```bash
+sudo AIC8800_RUN_LIVE_E2E=1 ./run_tests.sh
+```
+
+On drivers whose scan path stalls active traffic, pin the NetworkManager
+profile to the intended AP so it does not inject periodic roaming scans:
+
+```bash
+nmcli connection modify <profile> 802-11-wireless.bssid <AP-BSSID> \
+    802-11-wireless.powersave 2
+```
+
+This intentionally disables roaming to another AP with the same SSID. Update
+or clear the BSSID if the access point is replaced.
+
 **Simulate a kernel upgrade rebuild** (no reboot needed):
 
 ```bash
 # Install headers for another kernel version using your distro's package manager,
 # then build for that kernel:
-sudo dkms build -m aic8800dc -v 6.4.3.0-patched.1 -k <other-version>
+sudo dkms build -m aic8800 -v 1.0 -k <other-version>
 
 # Confirm both kernels show as installed
 dkms status

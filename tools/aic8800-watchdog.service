@@ -1,0 +1,17 @@
+[Unit]
+Description=AIC8800 Wi-Fi link monitor (no kernel module reloads)
+After=NetworkManager.service
+
+[Service]
+Type=simple
+Environment=AIC8800_WATCHDOG_MODE=observe
+ExecStart=/usr/local/bin/aic8800-watchdog.sh
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

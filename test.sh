@@ -1,7 +1,7 @@
 #!/bin/bash
 
-PACKAGE_NAME="aic8800dc"
-PACKAGE_VERSION="6.4.3.0-patched.1"
+PACKAGE_NAME="aic8800"
+PACKAGE_VERSION="1.0"
 KVER="$(uname -r)"
 PASS=0
 FAIL=0
@@ -79,8 +79,13 @@ else
 fi
 echo ""
 
-# --- 6. udev rule ---
-echo "-- udev rule --"
+# --- 6. Diagnostics and udev rule ---
+echo "-- Diagnostics and udev rule --"
+if [ -x /usr/local/bin/aic8800-diagnostics.sh ]; then
+    ok "/usr/local/bin/aic8800-diagnostics.sh present and executable"
+else
+    fail "/usr/local/bin/aic8800-diagnostics.sh missing or not executable"
+fi
 if [ -f /etc/udev/rules.d/aic.rules ]; then
     ok "/etc/udev/rules.d/aic.rules present"
 else

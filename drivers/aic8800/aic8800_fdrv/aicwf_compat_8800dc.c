@@ -1962,7 +1962,14 @@ int aicwf_plat_patch_load_8800dc(struct rwnx_hw *rwnx_hw){
     int ret = 0;
 
 #ifndef ANDROID_PLATFORM
-        sprintf(aic_fw_path, "%s/%s", aic_fw_path, "aic8800DC");
+    size_t fw_path_len = strnlen(aic_fw_path, sizeof(aic_fw_path));
+
+    if (fw_path_len >= sizeof(aic_fw_path) ||
+        strscpy(aic_fw_path + fw_path_len, "/aic8800DC",
+                sizeof(aic_fw_path) - fw_path_len) < 0) {
+        AICWFDBG(LOGERROR, "%s: firmware path is too long\n", __func__);
+        return -ENAMETOOLONG;
+    }
 #endif
     if (testmode == 0) {
 #if !defined(CONFIG_FPGA_VERIFICATION)
@@ -2116,4 +2123,3 @@ void system_config_8800dc(struct rwnx_hw *rwnx_hw){
     }
 
 }
-

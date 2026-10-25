@@ -2,8 +2,8 @@
 
 set -e
 
-PACKAGE_NAME="aic8800dc"
-PACKAGE_VERSION="6.4.3.0-patched.1"
+PACKAGE_NAME="aic8800"
+PACKAGE_VERSION="1.0"
 SRC_DIR="/usr/src/${PACKAGE_NAME}-${PACKAGE_VERSION}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -46,6 +46,24 @@ fi
 echo "[1/5] Installing firmware and udev rules..."
 cp -rf "${SCRIPT_DIR}/fw/aic8800DC" /lib/firmware/
 cp "${SCRIPT_DIR}/tools/aic.rules" /etc/udev/rules.d/
+if [ -f "${SCRIPT_DIR}/tools/99-aic8800-power.rules" ]; then
+    install -p -m 644 "${SCRIPT_DIR}/tools/99-aic8800-power.rules" /etc/udev/rules.d/99-aic8800-power.rules
+fi
+if [ -f "${SCRIPT_DIR}/tools/99-aic8800-dracut.conf" ] && [ -d /etc/dracut.conf.d ]; then
+    install -p -m 644 "${SCRIPT_DIR}/tools/99-aic8800-dracut.conf" /etc/dracut.conf.d/99-aic8800.conf
+fi
+if [ -f "${SCRIPT_DIR}/tools/99-wifi-txpower.sh" ] && [ -d /etc/NetworkManager/dispatcher.d ]; then
+    install -p -m 755 "${SCRIPT_DIR}/tools/99-wifi-txpower.sh" /etc/NetworkManager/dispatcher.d/99-wifi-txpower.sh
+fi
+install -p -m 755 "${SCRIPT_DIR}/tools/aic8800-diagnostics.sh" /usr/local/bin/
+install -p -m 755 "${SCRIPT_DIR}/tools/aic8800-watchdog.sh" /usr/local/bin/
+install -p -m 644 "${SCRIPT_DIR}/tools/aic8800-watchdog.service" /etc/systemd/system/
+systemctl daemon-reload
+if systemctl is-active --quiet aic8800-watchdog.service; then
+    # Replace any older running implementation immediately.  The packaged
+    # implementation observes only and never reloads kernel modules.
+    systemctl restart aic8800-watchdog.service
+fi
 udevadm trigger
 udevadm control --reload
 if [ -L /dev/aicudisk ]; then
@@ -89,5 +107,6 @@ echo "##################################################"
 echo "Installation complete!"
 echo ""
 echo "To verify:  sudo ./test.sh"
+echo "Diagnostics: aic8800-diagnostics.sh"
 echo "To remove:  sudo ./uninstall.sh"
 echo "##################################################"

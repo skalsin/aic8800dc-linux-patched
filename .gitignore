@@ -399,3 +399,20 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Linux kernel build artifacts and test binaries
+*.o
+*.ko
+*.ko.zst
+*.ko.gz
+*.mod
+*.mod.c
+.*.cmd
+..*.cmd
+Module.symvers
+modules.order
+.pytest_cache/
+tests/c_harness/test_frame_parser_asan
+tests/c_harness/test_usb_rx_tx_buffers_asan
+tests/c_harness/test_crypto_keys_asan
+tests/c_harness/test_cmd_mgr_tsan

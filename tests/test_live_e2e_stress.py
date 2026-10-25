@@ -2,10 +2,18 @@
 Live End-to-End (E2E) Stress, Fault-Injection, and Historical Bug Reproduction Suite.
 Executes real hardware and kernel operations to stress-test the active driver.
 """
+import os
 import subprocess
 import time
 import re
 import pytest
+
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("AIC8800_RUN_LIVE_E2E") != "1",
+    reason=("destructive hardware tests are opt-in; set "
+            "AIC8800_RUN_LIVE_E2E=1 to enable them"),
+)
 
 
 @pytest.fixture(scope="module")

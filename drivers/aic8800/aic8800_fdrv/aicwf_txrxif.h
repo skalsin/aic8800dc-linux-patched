@@ -154,7 +154,8 @@ struct aicwf_tx_priv {
 
 #ifdef AICWF_RX_REORDER
 #define MAX_REORD_RXFRAME       250
-#define REORDER_UPDATE_TIME     500//50
+/* Keep an explicitly enabled host reorder fallback below a beacon interval. */
+#define REORDER_UPDATE_TIME     50
 #define AICWF_REORDER_WINSIZE   64
 //SN_LESS(a, b) a-b<0 is ture
 #define SN_LESS(a, b)           (((a-b)&0x800)!=0)

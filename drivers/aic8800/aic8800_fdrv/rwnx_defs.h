@@ -355,6 +355,8 @@ struct rwnx_vif {
         {
             struct rwnx_sta *ap; /* Pointer to the peer STA entry allocated for
                                     the AP */
+            struct cfg80211_bss *connect_bss; /* BSS reference held while a
+                                                connect request is pending */
             struct rwnx_sta *tdls_sta; /* Pointer to the TDLS station */
             bool external_auth;  /* Indicate if external authentication is in progress */
             u8 group_cipher_type;

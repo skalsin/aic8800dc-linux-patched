@@ -559,13 +559,12 @@ static bool rwnx_rx_data_skb(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 
         /* forward pkt to upper layer */
         if (forward) {
-#ifdef CONFIG_BR_SUPPORT
-            void *br_port = NULL;
-
-
-            /* Update statistics */
+            /* Account every frame delivered to the network stack.  This must
+             * not depend on optional bridge/NAT support being compiled in. */
             rwnx_vif->net_stats.rx_packets++;
             rwnx_vif->net_stats.rx_bytes += rx_skb->len;
+#ifdef CONFIG_BR_SUPPORT
+            void *br_port = NULL;
 
             if (1) {//(check_fwstate(pmlmepriv, WIFI_STATION_STATE | WIFI_ADHOC_STATE) == _TRUE) {
                 /* Insert NAT2.5 RX here! */
@@ -2249,4 +2248,3 @@ end:
     REG_SW_CLEAR_PROFILING(rwnx_hw, SW_PROF_RWNXDATAIND);
     return 0;
 }
-

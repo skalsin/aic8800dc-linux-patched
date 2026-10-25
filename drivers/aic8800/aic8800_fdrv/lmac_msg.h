@@ -2151,16 +2151,17 @@ struct sm_connect_ind
     u16_l status_code;
     /// BSSID
     struct mac_addr bssid;
-    /// Flag indicating if the indication refers to an internal roaming or from a host request
-    bool_l roamed;
+    /// Firmware ABI flag: keep as an integer and normalize before use.  A raw
+    /// firmware value is not guaranteed to be a valid C _Bool representation.
+    u8_l roamed;
     /// Index of the VIF for which the association process is complete
     u8_l vif_idx;
     /// Index of the STA entry allocated for the AP
     u8_l ap_idx;
     /// Index of the LMAC channel context the connection is attached to
     u8_l ch_idx;
-    /// Flag indicating if the AP is supporting QoS
-    bool_l qos;
+    /// Firmware ABI flag; see roamed above.
+    u8_l qos;
     /// ACM bits set in the AP WMM parameter element
     u8_l acm;
     /// Length of the AssocReq IEs
@@ -2205,8 +2206,8 @@ struct sm_disconnect_ind
     u16_l reason_code;
     /// Index of the VIF.
     u8_l vif_idx;
-    /// FT over DS is ongoing
-    bool_l ft_over_ds;
+    /// Firmware ABI flag; normalize before use rather than loading as _Bool.
+    u8_l ft_over_ds;
 };
 
 /// Structure containing the parameters of the @ref SM_EXTERNAL_AUTH_REQUIRED_IND

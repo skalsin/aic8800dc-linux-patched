@@ -1,29 +1,42 @@
-"""
-Test the auto-recovery watchdog service, syntax, and configuration.
-"""
+"""Test the packaged watchdog's syntax and crash-safety contract."""
 import os
 import subprocess
-import pytest
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).parent.parent
+WATCHDOG = REPO_ROOT / "tools" / "aic8800-watchdog.sh"
+SERVICE = REPO_ROOT / "tools" / "aic8800-watchdog.service"
 
 
 def test_watchdog_script_exists_and_executable():
-    """Verify watchdog script is present and marked executable."""
-    script = "/usr/local/bin/aic8800-watchdog.sh"
-    assert os.path.isfile(script), f"{script} not found"
-    assert os.access(script, os.X_OK), f"{script} is not executable"
+    """Verify the package contains an executable watchdog script."""
+    assert WATCHDOG.is_file(), f"{WATCHDOG} not found"
+    assert os.access(WATCHDOG, os.X_OK), f"{WATCHDOG} is not executable"
 
 
 def test_watchdog_script_syntax():
     """Verify watchdog script contains valid bash syntax."""
-    script = "/usr/local/bin/aic8800-watchdog.sh"
-    res = subprocess.run(["bash", "-n", script], capture_output=True, text=True)
-    assert res.returncode == 0, f"Syntax error in {script}: {res.stderr}"
+    res = subprocess.run(["bash", "-n", str(WATCHDOG)], capture_output=True, text=True)
+    assert res.returncode == 0, f"Syntax error in {WATCHDOG}: {res.stderr}"
 
 
-def test_watchdog_systemd_service_active():
-    """Verify aic8800-watchdog.service is active and enabled."""
-    res = subprocess.run(["systemctl", "is-active", "aic8800-watchdog.service"], capture_output=True, text=True)
-    assert res.stdout.strip() == "active", f"aic8800-watchdog service is not active: {res.stdout.strip()}"
+def test_watchdog_cannot_reload_kernel_modules():
+    """Recovery automation must never unload or reload either driver module."""
+    content = WATCHDOG.read_text()
+    assert "modprobe" not in content
+    assert "rmmod" not in content
+    assert "systemctl restart wpa_supplicant" not in content
+
+
+def test_watchdog_defaults_to_observation_and_is_not_auto_enabled():
+    """Reassociation is opt-in and package installation does not enable it."""
+    script = WATCHDOG.read_text()
+    unit = SERVICE.read_text()
+    install = (REPO_ROOT / "install.sh").read_text()
+    assert 'AIC8800_WATCHDOG_MODE:-observe' in script
+    assert "Environment=AIC8800_WATCHDOG_MODE=observe" in unit
+    assert "systemctl enable aic8800-watchdog" not in install
 
 
 def test_dispatcher_txpower_script():
